@@ -8,12 +8,15 @@
 # Never expose this configuration directly to the public internet.
 #
 # Usage:
-#   docker compose -f docker-compose.noauth.yml up -d
+#   docker compose -f docker-compose.noauth.yml up -d --build
 version: '3.8'
 
 services:
   n8n-mcp:
-    image: ghcr.io/czlonkowski/n8n-mcp:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: n8n-mcp-noauth:local
     container_name: n8n-mcp-noauth
     restart: unless-stopped
 
