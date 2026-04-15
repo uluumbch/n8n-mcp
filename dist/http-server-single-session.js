@@ -699,6 +699,32 @@ class SingleSessionHTTPServer {
                 });
             }
         });
+        const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
+        const rateLimitWindow = parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10);
+        const safeRateLimitMax = Number.isFinite(rateLimitMax) && rateLimitMax >= 0 ? rateLimitMax : 100;
+        const safeRateLimitWindow = Number.isFinite(rateLimitWindow) && rateLimitWindow > 0 ? rateLimitWindow : 60000;
+        const globalLimiter = (0, express_rate_limit_1.default)({
+            windowMs: safeRateLimitWindow,
+            max: safeRateLimitMax,
+            standardHeaders: true,
+            legacyHeaders: false,
+            skip: () => safeRateLimitMax === 0,
+            handler: (req, res) => {
+                logger_1.logger.warn('Global rate limit exceeded', {
+                    ip: req.ip,
+                    userAgent: req.get('user-agent'),
+                    event: 'global_rate_limit'
+                });
+                res.status(429).json({
+                    jsonrpc: '2.0',
+                    error: {
+                        code: -32000,
+                        message: 'Too many requests. Please slow down.'
+                    },
+                    id: null
+                });
+            }
+        });
         app.get('/', (req, res) => {
             const port = parseInt(process.env.PORT || '3000');
             const host = process.env.HOST || '0.0.0.0';
@@ -736,7 +762,7 @@ class SingleSessionHTTPServer {
                 timestamp: new Date().toISOString()
             });
         });
-        app.get('/mcp', authLimiter, async (req, res) => {
+        app.get('/mcp', globalLimiter, authLimiter, async (req, res) => {
             if (!this.authenticateRequest(req, res))
                 return;
             const sessionId = req.headers['mcp-session-id'];
@@ -822,7 +848,7 @@ class SingleSessionHTTPServer {
                 documentation: 'https://github.com/czlonkowski/n8n-mcp'
             });
         });
-        app.get('/sse', authLimiter, async (req, res) => {
+        app.get('/sse', globalLimiter, authLimiter, async (req, res) => {
             if (!this.authenticateRequest(req, res))
                 return;
             logger_1.logger.warn('SSE transport is deprecated and will be removed in a future release. Migrate to StreamableHTTP (POST /mcp).', {
@@ -842,7 +868,7 @@ class SingleSessionHTTPServer {
                 }
             }
         });
-        app.post('/messages', authLimiter, jsonParser, async (req, res) => {
+        app.post('/messages', globalLimiter, authLimiter, jsonParser, async (req, res) => {
             if (!this.authenticateRequest(req, res))
                 return;
             const sessionId = req.query.sessionId;
@@ -878,7 +904,7 @@ class SingleSessionHTTPServer {
                 }
             }
         });
-        app.delete('/mcp', authLimiter, async (req, res) => {
+        app.delete('/mcp', globalLimiter, authLimiter, async (req, res) => {
             if (!this.authenticateRequest(req, res))
                 return;
             const mcpSessionId = req.headers['mcp-session-id'];
@@ -933,7 +959,7 @@ class SingleSessionHTTPServer {
                 });
             }
         });
-        app.post('/mcp', authLimiter, jsonParser, async (req, res) => {
+        app.post('/mcp', globalLimiter, authLimiter, jsonParser, async (req, res) => {
             logger_1.logger.info('POST /mcp request received - DETAILED DEBUG', {
                 headers: req.headers,
                 readable: req.readable,

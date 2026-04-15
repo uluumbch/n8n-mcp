@@ -1004,6 +1004,39 @@ export class SingleSessionHTTPServer {
       }
     });
 
+    // General rate limiter for all MCP endpoints.
+    // When DISABLE_AUTH=true the auth limiter above is ineffective (skipSuccessfulRequests
+    // means every request is skipped), so this limiter provides DoS protection in
+    // no-auth deployments. It is also applied in authenticated mode for defence-in-depth.
+    // Configurable via RATE_LIMIT_WINDOW (ms) and RATE_LIMIT_MAX (requests per IP per window).
+    // Set RATE_LIMIT_MAX=0 to disable (not recommended for no-auth deployments).
+    const rateLimitMax = parseInt(process.env.RATE_LIMIT_MAX || '100', 10);
+    const rateLimitWindow = parseInt(process.env.RATE_LIMIT_WINDOW || '60000', 10);
+    const safeRateLimitMax = Number.isFinite(rateLimitMax) && rateLimitMax >= 0 ? rateLimitMax : 100;
+    const safeRateLimitWindow = Number.isFinite(rateLimitWindow) && rateLimitWindow > 0 ? rateLimitWindow : 60000;
+    const globalLimiter = rateLimit({
+      windowMs: safeRateLimitWindow,
+      max: safeRateLimitMax,
+      standardHeaders: true,
+      legacyHeaders: false,
+      skip: () => safeRateLimitMax === 0, // Allow disabling via RATE_LIMIT_MAX=0
+      handler: (req, res) => {
+        logger.warn('Global rate limit exceeded', {
+          ip: req.ip,
+          userAgent: req.get('user-agent'),
+          event: 'global_rate_limit'
+        });
+        res.status(429).json({
+          jsonrpc: '2.0',
+          error: {
+            code: -32000,
+            message: 'Too many requests. Please slow down.'
+          },
+          id: null
+        });
+      }
+    });
+
     // Root endpoint with API information
     app.get('/', (req, res) => {
       const port = parseInt(process.env.PORT || '3000');
@@ -1054,7 +1087,7 @@ export class SingleSessionHTTPServer {
     // Requires authentication because a session ID in the header hands the request
     // off to an existing transport; an unauth caller with a leaked session ID
     // could interact with another client's stream.
-    app.get('/mcp', authLimiter, async (req, res) => {
+    app.get('/mcp', globalLimiter, authLimiter, async (req, res) => {
       if (!this.authenticateRequest(req, res)) return;
 
       // Handle StreamableHTTP transport requests with new pattern
@@ -1161,7 +1194,7 @@ export class SingleSessionHTTPServer {
     // DEPRECATED: SSE transport is deprecated in MCP SDK v1.x and removed in v2.x.
     // Clients should migrate to StreamableHTTP (POST /mcp). This endpoint will be
     // removed in a future major release.
-    app.get('/sse', authLimiter, async (req: express.Request, res: express.Response): Promise<void> => {
+    app.get('/sse', globalLimiter, authLimiter, async (req: express.Request, res: express.Response): Promise<void> => {
       if (!this.authenticateRequest(req, res)) return;
 
       logger.warn('SSE transport is deprecated and will be removed in a future release. Migrate to StreamableHTTP (POST /mcp).', {
@@ -1184,7 +1217,7 @@ export class SingleSessionHTTPServer {
     });
 
     // SSE message delivery endpoint (receives JSON-RPC messages from SSE clients)
-    app.post('/messages', authLimiter, jsonParser, async (req: express.Request, res: express.Response): Promise<void> => {
+    app.post('/messages', globalLimiter, authLimiter, jsonParser, async (req: express.Request, res: express.Response): Promise<void> => {
       if (!this.authenticateRequest(req, res)) return;
 
       // SSE uses ?sessionId query param (not mcp-session-id header)
@@ -1229,7 +1262,7 @@ export class SingleSessionHTTPServer {
 
     // Session termination endpoint — must require authentication, otherwise any
     // unauthenticated client can terminate arbitrary MCP sessions (GHSA-75hx-xj24-mqrw).
-    app.delete('/mcp', authLimiter, async (req: express.Request, res: express.Response): Promise<void> => {
+    app.delete('/mcp', globalLimiter, authLimiter, async (req: express.Request, res: express.Response): Promise<void> => {
       if (!this.authenticateRequest(req, res)) return;
 
       const mcpSessionId = req.headers['mcp-session-id'] as string;
@@ -1289,7 +1322,7 @@ export class SingleSessionHTTPServer {
     });
 
     // Main MCP endpoint with authentication and rate limiting
-    app.post('/mcp', authLimiter, jsonParser, async (req: express.Request, res: express.Response): Promise<void> => {
+    app.post('/mcp', globalLimiter, authLimiter, jsonParser, async (req: express.Request, res: express.Response): Promise<void> => {
       // Log comprehensive debug info about the request
       logger.info('POST /mcp request received - DETAILED DEBUG', {
         headers: req.headers,
