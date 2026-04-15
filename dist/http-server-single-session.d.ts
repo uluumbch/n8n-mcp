@@ -16,6 +16,7 @@ export declare class SingleSessionHTTPServer {
     private expressServer;
     private sessionTimeout;
     private authToken;
+    private authDisabled;
     private cleanupTimer;
     private generateWorkflowHandler?;
     constructor(options?: SingleSessionHTTPServerOptions);

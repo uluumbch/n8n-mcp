@@ -115,6 +115,7 @@ export class SingleSessionHTTPServer {
     process.env.SESSION_TIMEOUT_MINUTES || '30', 10
   ) * 60 * 1000;
   private authToken: string | null = null;
+  private authDisabled: boolean = false;
   private cleanupTimer: NodeJS.Timeout | null = null;
   private generateWorkflowHandler?: GenerateWorkflowHandler;
 
@@ -327,8 +328,13 @@ export class SingleSessionHTTPServer {
    * Authenticate a request by validating the Bearer token.
    * Returns true if authentication succeeds, false if it fails
    * (and the response has already been sent with a 401 status).
+   * When DISABLE_AUTH=true, authentication is skipped entirely.
    */
   private authenticateRequest(req: express.Request, res: express.Response): boolean {
+    if (this.authDisabled) {
+      return true;
+    }
+
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -470,6 +476,19 @@ export class SingleSessionHTTPServer {
    * Validate required environment variables
    */
   private validateEnvironment(): void {
+    // Check if auth is disabled
+    const disableAuth = process.env.DISABLE_AUTH === 'true';
+    if (disableAuth) {
+      this.authDisabled = true;
+      logger.warn('⚠️ Authentication is DISABLED (DISABLE_AUTH=true). Ensure network-level security is in place.');
+      if (process.env.MCP_MODE === 'http') {
+        console.warn('\n⚠️  SECURITY WARNING ⚠️');
+        console.warn('Authentication is DISABLED via DISABLE_AUTH=true.');
+        console.warn('Make sure this server is only accessible from trusted networks.\n');
+      }
+      return;
+    }
+
     // Load auth token from env var or file
     this.authToken = this.loadAuthToken();
     
@@ -1090,6 +1109,7 @@ export class SingleSessionHTTPServer {
       }
       
       // Standard response for non-n8n mode
+      const authDesc = this.authDisabled ? 'None (DISABLE_AUTH=true)' : 'Bearer token required';
       res.json({
         description: 'n8n Documentation MCP Server',
         version: PROJECT_VERSION,
@@ -1098,26 +1118,26 @@ export class SingleSessionHTTPServer {
             method: 'POST',
             path: '/mcp',
             description: 'Main MCP JSON-RPC endpoint (StreamableHTTP)',
-            authentication: 'Bearer token required'
+            authentication: authDesc
           },
           mcpDelete: {
             method: 'DELETE',
             path: '/mcp',
             description: 'Terminate an active MCP session by Mcp-Session-Id header',
-            authentication: 'Bearer token required'
+            authentication: authDesc
           },
           sse: {
             method: 'GET',
             path: '/sse',
             description: 'DEPRECATED: SSE stream for legacy clients. Migrate to StreamableHTTP (POST /mcp).',
-            authentication: 'Bearer token required',
+            authentication: authDesc,
             deprecated: true
           },
           messages: {
             method: 'POST',
             path: '/messages',
             description: 'DEPRECATED: Message delivery for SSE sessions. Migrate to StreamableHTTP (POST /mcp).',
-            authentication: 'Bearer token required',
+            authentication: authDesc,
             deprecated: true
           },
           health: {

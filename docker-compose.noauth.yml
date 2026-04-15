@@ -1,0 +1,62 @@
+# docker-compose.noauth.yml
+# No-authentication deployment for clients that cannot send Bearer token headers.
+#
+# ⚠️  SECURITY WARNING ⚠️
+# Authentication is completely disabled in this configuration.
+# Only use this setup when the server is protected at the network level
+# (e.g., behind a private VPN, firewall, or localhost-only binding).
+# Never expose this configuration directly to the public internet.
+#
+# Usage:
+#   docker compose -f docker-compose.noauth.yml up -d
+version: '3.8'
+
+services:
+  n8n-mcp:
+    image: ghcr.io/czlonkowski/n8n-mcp:latest
+    container_name: n8n-mcp-noauth
+    restart: unless-stopped
+
+    environment:
+      MCP_MODE: ${MCP_MODE:-http}
+
+      # Disable Bearer token authentication.
+      # The server will accept all requests without requiring an Authorization header.
+      DISABLE_AUTH: "true"
+
+      NODE_ENV: ${NODE_ENV:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PORT: ${PORT:-3000}
+
+      NODE_DB_PATH: ${NODE_DB_PATH:-/app/data/nodes.db}
+      REBUILD_ON_START: ${REBUILD_ON_START:-false}
+
+      # Optional: n8n API configuration (enables 16 additional management tools)
+      # N8N_API_URL: ${N8N_API_URL}
+      # N8N_API_KEY: ${N8N_API_KEY}
+      # N8N_API_TIMEOUT: ${N8N_API_TIMEOUT:-30000}
+      # N8N_API_MAX_RETRIES: ${N8N_API_MAX_RETRIES:-3}
+
+    volumes:
+      - n8n-mcp-noauth-data:/app/data
+
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -f http://127.0.0.1:$${PORT:-3000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  n8n-mcp-noauth-data:
+    driver: local

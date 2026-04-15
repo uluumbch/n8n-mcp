@@ -13,8 +13,8 @@ log_message() {
 }
 
 # Environment variable validation
-if [ "$MCP_MODE" = "http" ] && [ -z "$AUTH_TOKEN" ] && [ -z "$AUTH_TOKEN_FILE" ]; then
-    log_message "ERROR: AUTH_TOKEN or AUTH_TOKEN_FILE is required for HTTP mode" >&2
+if [ "$MCP_MODE" = "http" ] && [ "$DISABLE_AUTH" != "true" ] && [ -z "$AUTH_TOKEN" ] && [ -z "$AUTH_TOKEN_FILE" ]; then
+    log_message "ERROR: AUTH_TOKEN or AUTH_TOKEN_FILE is required for HTTP mode (set DISABLE_AUTH=true to skip authentication)" >&2
     exit 1
 fi
 
@@ -126,6 +126,7 @@ if [ "$(id -u)" = "0" ]; then
     export NODE_DB_PATH="$NODE_DB_PATH"
     export AUTH_TOKEN="$AUTH_TOKEN"
     export AUTH_TOKEN_FILE="$AUTH_TOKEN_FILE"
+    export DISABLE_AUTH="$DISABLE_AUTH"
     
     # Ensure AUTH_TOKEN_FILE has restricted permissions for security
     if [ -n "$AUTH_TOKEN_FILE" ] && [ -f "$AUTH_TOKEN_FILE" ]; then
