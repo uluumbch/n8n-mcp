@@ -9,7 +9,6 @@
 #
 # Usage:
 #   docker compose -f docker-compose.noauth.yml up -d --build
-version: '3.8'
 
 services:
   n8n-mcp:
@@ -35,8 +34,8 @@ services:
       REBUILD_ON_START: ${REBUILD_ON_START:-false}
 
       # Optional: n8n API configuration (enables 16 additional management tools)
-      # N8N_API_URL: ${N8N_API_URL}
-      # N8N_API_KEY: ${N8N_API_KEY}
+      N8N_API_URL: ${N8N_API_URL}
+      N8N_API_KEY: ${N8N_API_KEY}
       # N8N_API_TIMEOUT: ${N8N_API_TIMEOUT:-30000}
       # N8N_API_MAX_RETRIES: ${N8N_API_MAX_RETRIES:-3}
 
